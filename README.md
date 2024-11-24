@@ -16,36 +16,6 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
   - Uses ZooKeeper for distributed coordination and failover handling.
   - Leader manages all jobs, while followers wait for leadership.
 
-## Installation
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/your-repo/tgflow.git
-   cd tgflow
-   ```
-
-2. **Set Up the Tool**:
-   - Make the script executable:
-     ```bash
-     chmod +x tgflow.py
-     ```
-   - Rename it for convenience (optional):
-     ```bash
-     mv tgflow.py tgflow
-     ```
-
-3. **Add to PATH**:
-   - Move the script to `/usr/local/bin` or `~/bin`:
-     ```bash
-     sudo mv tgflow /usr/local/bin/
-     ```
-   - Alternatively, add the repository directory to your `PATH`.
-
-4. **Run**:
-   ```bash
-   tgflow --help
-   ```
-
 ## Usage
 
 ### Commands
@@ -54,7 +24,7 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
   ```bash
   tgflow list-jobs
   ```
-  Lists all job definitions under `/flo/jobs` in ZooKeeper.
+  Lists all job definitions under `/tgflow/jobs` in ZooKeeper.
 
 - **Add or Update a Job**:
   ```bash
@@ -85,7 +55,7 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
 
 ## ZooKeeper Node Structure
 
-### Job Nodes (`/flo/jobs/<job_name>`)
+### Job Nodes (`/tgflow/jobs/<job_name>`)
 
 Each job node contains JSON metadata:
 
@@ -118,7 +88,7 @@ Each job node contains JSON metadata:
 }
 ```
 
-### Leader Node (`/flow/leader`)
+### Leader Node (`/tgflow/leader`)
 
 The leader node contains:
 ```json
@@ -128,7 +98,7 @@ The leader node contains:
 }
 ```
 
-### Follower Nodes (`/flow/followers/<hostname>`)
+### Follower Nodes (`/tgflow/followers/<hostname>`)
 
 Each follower node contains:
 ```json
@@ -174,4 +144,4 @@ MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions are welcome! Open an issue or submit a pull request on [GitHub](https://github.com/your-repo/tgflow).
+Contributions are welcome! Open an issue or submit a pull request
