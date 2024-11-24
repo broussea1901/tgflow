@@ -32,7 +32,7 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
   ```
   Example:
   ```bash
-  tgflow add-job pg_batch_job '{"type": "pgsql_batch", "graph": "MyGraph", "job_name": "MyBatchJob", "frequency": "1h"}'
+  tgflow add-job mygsql_batch_job '{"type": "gsql_batch", "graph": "MyGraph", "job_name": "MyBatchJob", "frequency": "1h"}'
   ```
 
 - **Show Cluster Status**:
@@ -42,16 +42,6 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
   Displays:
   - Current leader with election time.
   - List of followers with rejoin timestamps.
-
-- **Show Leader**:
-  ```bash
-  tgflow show-leader
-  ```
-
-- **List Followers**:
-  ```bash
-  tgflow list-followers
-  ```
 
 ## ZooKeeper Node Structure
 
@@ -123,20 +113,6 @@ If no suffix is provided, frequency defaults to seconds.
 
 - **`ZOOKEEPER_CLI`**: Path to ZooKeeper CLI (default: `/path/to/zkCli.sh`).
 - **`ZOOKEEPER_SERVER`**: ZooKeeper server address and port (default: `localhost:2181`).
-
-## Developer Notes
-
-### Extending TgFlow
-
-- Add new job types by updating `validate_job_data` and `manage_jobs`.
-- Customize leader and follower logic in `create_follower_znode` and `watch_znode`.
-
-### Testing
-
-- Run with mock ZooKeeper data for development:
-  ```bash
-  tgflow cluster-status
-  ```
 
 ## License
 
