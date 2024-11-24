@@ -6,7 +6,7 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
 ## Features
 
 - **Job Management**:
-  - Supports TigerGraph PSQL batch and stream jobs.
+  - Supports TigerGraph GSQL batch and stream jobs.
   - Executes custom command-based tasks.
   - Handles job scheduling with flexible frequency options (e.g., seconds, minutes, hours, days).
 - **Cluster Monitoring**:
@@ -89,20 +89,20 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
 
 Each job node contains JSON metadata:
 
-#### PostgreSQL Batch Jobs
+#### GSQL Batch Jobs
 ```json
 {
-  "type": "pgsql_batch",
+  "type": "gsql_batch",
   "graph": "GraphName",
   "job_name": "JobName",
   "frequency": "1h"
 }
 ```
 
-#### PostgreSQL Stream Jobs
+#### GSQL Stream Jobs
 ```json
 {
-  "type": "pgsql_stream",
+  "type": "gsql_stream",
   "graph": "GraphName",
   "job_name": "JobName"
 }
