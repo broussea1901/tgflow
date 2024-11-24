@@ -1,0 +1,17 @@
+[Unit]
+Description=TgFlow Service - TigerGraph Batch and Stream Job Manager with Leader Election
+After=network.target
+
+[Service]
+ExecStart={{ tgflow_install_path }}/tgflow-service
+Restart=always
+Environment=ZOOKEEPER_CLI={{ zookeeper_cli_path }}
+Environment=ZOOKEEPER_SERVER={{ zookeeper_server }}
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=tgflow
+User=your_user
+Group=your_group
+
+[Install]
+WantedBy=multi-user.target

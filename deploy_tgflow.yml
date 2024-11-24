@@ -1,0 +1,12 @@
+---
+- name: Deploy TgFlow on Cluster
+  hosts: all
+  become: yes
+  vars:
+    tgflow_install_path: /usr/local/bin
+    tgflow_service_name: tgflow
+    zookeeper_cli_path: /opt/zookeeper/bin/zkCli.sh
+    zookeeper_server: localhost:2181
+    tgflow_user: tigergraph
+  roles:
+    - tgflow

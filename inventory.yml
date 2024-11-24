@@ -1,0 +1,31 @@
+all:
+  dev:
+    hosts:
+      dev-server-1:
+        ansible_host: 192.168.10.1
+      dev-server-2:
+        ansible_host: 192.168.10.2
+      dev-server-3:
+        ansible_host: 192.168.10.3
+      dev-server-4:
+        ansible_host: 192.168.10.4
+  qual:
+    hosts:
+      qual-server-1:
+        ansible_host: 192.168.20.1
+      qual-server-2:
+        ansible_host: 192.168.20.2
+      qual-server-3:
+        ansible_host: 192.168.20.3
+      qual-server-4:
+        ansible_host: 192.168.20.4
+  prd:
+    hosts:
+      prd-server-1:
+        ansible_host: 192.168.30.1
+      prd-server-2:
+        ansible_host: 192.168.30.2
+      prd-server-3:
+        ansible_host: 192.168.30.3
+      prd-server-4:
+        ansible_host: 192.168.30.4

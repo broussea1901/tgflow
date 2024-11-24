@@ -1,0 +1,69 @@
+---
+- name: Ensure tigergraph user exists
+  user:
+    name: tigergraph
+    state: present
+    
+- name: Ensure Python3 is installed
+  package:
+    name: python3
+    state: present
+
+- name: Ensure ZooKeeper CLI path exists
+  file:
+    path: "{{ zookeeper_cli_path }}"
+    state: file
+
+- name: Create the TigerGraph installation directory
+  file:
+    path: "{{ tgflow_install_path }}"
+    state: directory
+    owner: tigergraph
+    group: tigergraph
+    mode: '0755'
+
+- name: Copy TgFlow tool to servers
+  copy:
+    src: files/tgflow
+    dest: "{{ tgflow_install_path }}/tgflow"
+    owner: tigergraph
+    group: tigergraph
+    mode: '0755'
+
+- name: Copy TgFlow service script to servers
+  copy:
+    src: files/tgflow-service
+    dest: "{{ tgflow_install_path }}/tgflow-service"
+    owner: tigergraph
+    group: tigergraph
+    mode: '0755'
+
+- name: Update ZOOKEEPER_CLI path in scripts
+  lineinfile:
+    path: "{{ item }}"
+    regexp: '^ZOOKEEPER_CLI = ".*"'
+    line: 'ZOOKEEPER_CLI = "{{ zookeeper_cli_path }}"'
+  with_items:
+    - "{{ tgflow_install_path }}/tgflow"
+    - "{{ tgflow_install_path }}/tgflow-service"
+
+- name: Configure TgFlow as a systemd service
+  template:
+    src: tgflow.service.j2
+    dest: /etc/systemd/system/{{ tgflow_service_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Reload systemd to recognize the new service
+  command: systemctl daemon-reload
+
+- name: Enable TgFlow service to start on boot
+  systemd:
+    name: "{{ tgflow_service_name }}"
+    enabled: true
+
+- name: Start TgFlow service
+  systemd:
+    name: "{{ tgflow_service_name }}"
+    state: started

@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+
+import argparse
+import subprocess
+import json
+from datetime import datetime
+
+# Configuration
+ZOOKEEPER_CLI = "/path/to/zkCli.sh"  # Path to ZooKeeper CLI for managing znodes
+ZOOKEEPER_SERVER = "localhost:2181"  # ZooKeeper server address and port
+LEADER_ZNODE = "/tgflow/leader"  # Znode for leader information
+FOLLOWERS_ZNODE = "/tgflow/followers"  # Base znode for followers
+
+def log_message(level, message, **kwargs):
+    """
+    Log a JSON-formatted message to standard output.
+    """
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": level,
+        "message": message,
+    }
+    log_entry.update(kwargs)
+    print(json.dumps(log_entry))
+
+def execute_command(command):
+    """
+    Execute a shell command and return the output.
+    """
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        log_message("ERROR", "Command execution failed", command=" ".join(command), error=result.stderr.strip())
+        return None
+    return result.stdout.strip()
+
+def show_cluster_status():
+    """
+    Show the cluster status, including the leader and followers with timestamps.
+    """
+    # Leader information
+    leader_info = execute_command([ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "get", LEADER_ZNODE])
+    if leader_info:
+        leader_data = leader_info.split("\n")[-1]  # Extract JSON data
+        try:
+            leader_data = json.loads(leader_data)
+            leader = leader_data.get("hostname", "Unknown")
+            election_time = leader_data.get("timestamp", "Unknown")
+        except json.JSONDecodeError:
+            leader = "Unknown"
+            election_time = "Unknown"
+    else:
+        leader = "None"
+        election_time = "N/A"
+
+    # Follower information
+    follower_list = execute_command([ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "ls", FOLLOWERS_ZNODE])
+    followers = []
+    if follower_list:
+        try:
+            follower_list = json.loads(follower_list.split("\n")[-1].replace("'", "\""))
+            for follower in follower_list:
+                follower_data = execute_command([ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "get", f"{FOLLOWERS_ZNODE}/{follower}"])
+                if follower_data:
+                    try:
+                        follower_data = json.loads(follower_data.split("\n")[-1])
+                        followers.append({
+                            "hostname": follower_data.get("hostname", follower),
+                            "timestamp": follower_data.get("timestamp", "Unknown")
+                        })
+                    except json.JSONDecodeError:
+                        followers.append({"hostname": follower, "timestamp": "Invalid Data"})
+        except json.JSONDecodeError:
+            log_message("ERROR", "Failed to parse follower list")
+    
+    # Display cluster status
+    print("Cluster Status:")
+    print(f"Leader: {leader}")
+    print(f"Election Time: {election_time}")
+    print("Followers:")
+    for follower in followers:
+        print(f"  - Hostname: {follower['hostname']}, Rejoin Time: {follower['timestamp']}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=" tgflow cluster Status and Job Management Tool",
+        epilog="Examples:\n"
+               "  tgflow cluster-status\n"
+               "  tgflow list-jobs\n"
+               "  tgflow add-job job_name '{\"type\": \"command\", \"command\": \"/path/to/command\", \"args\": [\"--option\"], \"frequency\": 3600}'\n"
+               "  tgflow show-leader\n"
+               "  tgflow list-followers",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Cluster status
+    subparsers.add_parser("cluster-status", help="Show the cluster status (leader and followers with timestamps)")
+
+    # Other commands (list-jobs, add-job, show-leader, list-followers)
+    subparsers.add_parser("list-jobs", help="List all job definitions in /tgflow/jobs")
+    add_job_parser = subparsers.add_parser("add-job", help="Add or update a job node")
+    add_job_parser.add_argument("job_name", help="Name of the job node")
+    add_job_parser.add_argument("job_data", help="JSON string representing the job data")
+    subparsers.add_parser("show-leader", help="Show the current leader's details from /tgflow/leader")
+    subparsers.add_parser("list-followers", help="List all follower nodes under /tgflow/followers")
+
+    args = parser.parse_args()
+
+    if args.command == "cluster-status":
+        show_cluster_status()
+    elif args.command == "list-jobs":
+        list_jobs()
+    elif args.command == "add-job":
+        try:
+            job_data = json.loads(args.job_data)
+            add_job(args.job_name, job_data)
+        except json.JSONDecodeError:
+            log_message("ERROR", "Invalid JSON format for job data", job_data=args.job_data)
+    elif args.command == "show-leader":
+        show_leader()
+    elif args.command == "list-followers":
+        list_followers()
+
+if __name__ == "__main__":
+    main()

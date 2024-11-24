@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+
+import subprocess
+import socket
+import time
+import json
+from datetime import datetime
+
+# Configuration
+ZOOKEEPER_CLI = "/path/to/zkCli.sh"  # Path to ZooKeeper CLI for managing znodes
+ZOOKEEPER_SERVER = "localhost:2181"  # ZooKeeper server address and port
+DEFAULT_BATCH_FREQUENCY = 14400  # Default frequency for batch job restarts (4 hours in seconds)
+LEADER_ZNODE = "/tgflow/leader"  # Leader znode path
+FOLLOWER_BASE_ZNODE = "/tgflow/followers"  # Base path for follower znodes
+SECRET_ZNODE = "/tgflow/secret"  # Secret znode path for authentication token retrieval
+HOSTNAME = socket.gethostname()  # Get the hostname of the current machine
+SERVER_IP = "127.0.0.1"  # TigerGraph server IP or preferably LB VIP
+PORT = "9000"  # TigerGraph server port
+SLEEP_INTERVAL = 10  # Interval for monitoring jobs (in seconds)
+CHECK_INTERVAL = 5  # Interval for checking leadership status (in seconds)
+LAAS_AP = "ap12345"  # Application identifier for logging
+LAAS_LOGGER = "tgflow"  # Logger name
+LAAS_RETENTION = "month"  # Log retention period
+
+# Expected ZooKeeper Node Content
+"""
+/tgflow/jobs/<job_name>:
+  For gsql_batch jobs:
+    {
+      "type": "gsql_batch", 
+      "graph": "GraphName", 
+      "job_name": "JobName", 
+      "frequency": 14400  # Optional, in seconds (default 14400 if not defined)
+    }
+
+  For gsql_stream jobs:
+    {
+      "type": "gsql_stream",  
+      "graph": "GraphName",  
+      "job_name": "JobName" 
+    }
+
+  For Commands jobs:
+    {
+        "type": "command",  # Indicates this is a command job
+        "command": "/path/to/command",  # Full path to the executable
+        "args": ["arg1", "arg2"],  # Optional list of arguments
+        "frequency": 14400  # Optional, in seconds (default 14400 if not defined)
+    }
+
+Frequency value can be suffixed with 'm', 'h' or 'd' to express amount in minutes, hours and days 
+
+All field are mandatory except the ones tagged as '# Optional'
+This content is validated in validate_job_data()
+"""
+
+def log_message(level, message, **kwargs):
+    """
+    Log a JSON-formatted message to standard output
+    Includes mandatory fields (timestamp, hostname, laas_ap, laas_logger, laas_retention)
+    Additional details can be passed via kwargs
+
+    Args:
+        level (str): Log level (e.g., INFO, WARN, ERROR).
+        message (str): Log message.
+        kwargs: Additional context for the log.
+    """
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "level": level,
+        "message": message,
+        "hostname": HOSTNAME,
+        "laas_ap": LAAS_AP,
+        "laas_logger": LAAS_LOGGER,
+        "laas_retention": LAAS_RETENTION
+    }
+    log_entry.update(kwargs)
+    print(json.dumps(log_entry))
+
+def get_zookeeper_data(path):
+    """
+    Retrieve the data payload of a specific ZooKeeper node
+
+    Args:
+        path (str): Path to the ZooKeeper node
+
+    Returns:
+        str: Data payload of the node
+    """
+    result = subprocess.run(
+        [ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "get", path],
+        capture_output=True,
+        text=True
+    )
+    return result.stdout.strip().split("\n")[-1]  # Return the last line as the payload
+
+def create_ephemeral_znode(path, payload):
+    """
+    Create an ephemeral znode with the specified payload
+
+    Args:
+        path (str): Path for the znode.
+        payload (str): JSON-formatted payload to store in the znode
+
+    Returns:
+        bool: True if znode creation succeeds, False otherwise
+    """
+    command = [ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "create", "-e", path, payload]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if "Created" in result.stdout:
+        log_message("INFO", f"Ephemeral znode created successfully", znode=path, payload=payload)
+        return True
+    log_message("WARN", f"Failed to create ephemeral znode", znode=path)
+    return False
+
+def create_follower_znode():
+    """
+    Create a follower znode under /tgflow/follower/<hostname> with hostname and timestamp
+    This identifies the instance as a follower
+    """
+    follower_znode = f"{FOLLOWER_BASE_ZNODE}/{HOSTNAME}"
+    payload = json.dumps({"hostname": HOSTNAME, "timestamp": datetime.utcnow().isoformat()})
+    create_ephemeral_znode(follower_znode, payload)
+
+def watch_znode():
+    """
+    Watch for the deletion of the leader znode (/tgflow/leader)ce and block until it is deleted
+    This is used by followers to wait for their turn to become the leader
+    """
+    log_message("INFO", "Watching for znode deletion", znode=LEADER_ZNODE)
+    command = [ZOOKEEPER_CLI, "-server", ZOOKEEPER_SERVER, "get", LEADER_ZNODE, "true"]
+    subprocess.run(command, capture_output=True, text=True)  # Block until znode changes or is deleted
+    log_message("INFO", "Znode deleted. Retrying leadership election", znode=LEADER_ZNODE)
+
+def get_auth_token(secret):
+    """
+    Obtain an authentication token using the secret stored in ZooKeeper
+
+    Args:
+        secret (str): Secret for authentication
+
+    Returns:
+        str: Authentication token or None if the request fails
+    """
+    endpoint = f"http://{SERVER_IP}:{PORT}/requesttoken?secret={secret}"
+    response = subprocess.run(["curl", "-s", "-X", "GET", endpoint], capture_output=True, text=True)
+    response_data = json.loads(response.stdout)
+    if response_data.get("error"):
+        log_message("ERROR", "Failed to obtain authentication token", details=response_data.get("message"))
+        return None
+    token = response_data.get("token")
+    log_message("INFO", "Obtained authentication token")
+    return token
+
+def validate_job_data(job_data):
+    """
+    Validate the structure and content of job data
+    """
+    required_keys_by_type = {
+        "gsql_batch": ["type", "graph", "job_name"],
+        "gsql_stream": ["type", "graph", "job_name"],
+        "command": ["type", "command"]
+    }
+
+    job_type = job_data.get("type")
+    if job_type not in required_keys_by_type:
+        log_message("ERROR", f"Unknown job type: {job_type}", job_data=job_data)
+        return False
+
+    for key in required_keys_by_type[job_type]:
+        if key not in job_data:
+            log_message("ERROR", f"Invalid job data: missing key {key}", job_data=job_data)
+            return False
+
+    return True
+
+    job_type = job_data.get("type")
+    if job_type not in required_keys_by_type:
+        log_message("ERROR", f"Unknown job type: {job_type}", job_data=job_data)
+        return False
+
+    for key in required_keys_by_type[job_type]:
+        if key not in job_data:
+            log_message("ERROR", f"Invalid job data: missing key {key}", job_data=job_data)
+            return False
+
+    return True
+
+def parse_frequency(frequency):
+    """
+    Parse the frequency value and convert it to seconds.
+
+    Args:
+        frequency (str or int): Frequency value with optional suffix ('m', 'h', 'd').
+
+    Returns:
+        int: Frequency in seconds.
+    """
+    if isinstance(frequency, int):  # If numeric it's already in seconds
+        return frequency
+
+    if isinstance(frequency, str):  # If string it's has to be parsed
+        try:
+            if frequency.endswith("m"):  # Minutes
+                return int(frequency[:-1]) * 60
+            elif frequency.endswith("h"):  # Hours
+                return int(frequency[:-1]) * 3600
+            elif frequency.endswith("d"):  # Days
+                return int(frequency[:-1]) * 86400
+            else:  # No suffix, assume seconds
+                return int(frequency)
+        except ValueError:
+            log_message("ERROR", f"Invalid frequency format: {frequency}")
+            raise ValueError(f"Invalid frequency format: {frequency}")
+
+    log_message("ERROR", f"Unsupported frequency type: {type(frequency)}")
+    raise ValueError(f"Unsupported frequency type: {type(frequency)}")
+
+def run_gsql_job(graph_name, job_name, token, is_stream=False):
+    """
+    Run a PostgreSQL TigerGraph job (stream or batch) using REST API and authentication
+
+    Args:
+        graph_name (str): Name of the graph
+        job_name (str): Name of the job to run
+        token (str): Authentication token
+        is_stream (bool): True if the job is a stream job, False if batch
+    """
+    endpoint = f"http://{SERVER_IP}:{PORT}/ddl/{graph_name}?tag={job_name}"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = subprocess.run(
+        ["curl", "-X", "POST", endpoint, "-H", f"Authorization: Bearer {token}"],
+        capture_output=True,
+        text=True
+    )
+    job_type = "gsql_stream" if is_stream else "gsql_batch"
+    log_message("INFO", f"{job_type.capitalize()} job started", graph=graph_name, job=job_name, job_type=job_type)
+    return response.stdout
+
+def get_job_status(graph_name, token):
+    """
+    Check the status of a TigerGraph job using REST API and authentication
+
+    Args:
+        graph_name (str): Name of the graph
+        token (str): Authentication token
+
+    Returns:
+        dict: Parsed JSON response containing job status
+    """
+    endpoint = f"http://{SERVER_IP}:{PORT}/ddl/{graph_name}?status"
+    response = subprocess.run(
+        ["curl", "-s", "-X", "GET", endpoint, "-H", f"Authorization: Bearer {token}"],
+        capture_output=True,
+        text=True
+    )
+    return json.loads(response.stdout)
+
+def monitor_and_restart_job(graph_name, job_name, token, is_stream=False, frequency=None):
+    """
+    Monitor a job (stream or batch) and restart it if necessary
+
+    Args:
+        graph_name (str): Name of the graph
+        job_name (str): Name of the job
+        token (str): Authentication token
+        is_stream (bool): True if stream job, False otherwise
+        frequency (int): Frequency in seconds for batch job restarts
+    """
+    if is_stream:
+        while True:
+            status = get_job_status(graph_name, token)
+            if status.get("status") == "running":
+                log_message("INFO", f"Stream job running successfully", graph=graph_name, job=job_name)
+                time.sleep(SLEEP_INTERVAL)
+            else:
+                log_message("ERROR", f"Stream job failed. Restarting...", graph=graph_name, job=job_name)
+                run_job(graph_name, job_name, token, is_stream=True)
+    else:
+        last_run_time = datetime.now()
+        while True:
+            status = get_job_status(graph_name, token)
+            if status.get("status") != "running":
+                log_message("ERROR", f"Batch job failed. Restarting...", graph=graph_name, job=job_name)
+                run_job(graph_name, job_name, token)
+            elif (datetime.now() - last_run_time).total_seconds() >= frequency:
+                log_message("INFO", f"Time to restart batch job (scheduled)", graph=graph_name, job=job_name)
+                run_job(graph_name, job_name, token)
+                last_run_time = datetime.now()
+            time.sleep(SLEEP_INTERVAL)
+
+def monitor_local_command(command, args, frequency):
+    """
+    Monitor and restart a local command at a specified frequency.
+
+    Args:
+        command (str): Full path to the command.
+        args (list): List of arguments for the command.
+        frequency (int): Frequency in seconds to rerun the command.
+    """
+    while True:
+        if run_local_command(command, args):
+            log_message("INFO", f"Command executed successfully", command=command)
+        else:
+            log_message("ERROR", f"Command execution failed", command=command)
+        log_message("INFO", f"Sleeping for {frequency} seconds before next execution", command=command)
+        time.sleep(frequency)
+
+def run_local_command(script_path, args):
+    """
+    Execute a local command with optional arguments
+
+    Args:
+        script_path (str): Path to the Python script.
+        args (list): List of arguments to pass to the script
+
+    Returns:
+        bool: True if the script executed successfully, False otherwise
+    """
+     # Combine command and its arguments into a single list for subprocess
+    full_command = [command] + args
+    log_message("INFO", f"Running Python script", script_path=script_path, args=args)
+    result = subprocess.run(command, capture_output=True, text=True)
+    # Check return code to determine success or failure
+    if result.returncode != 0:
+        log_message("ERROR", "Python script execution failed", script_path=script_path, error=result.stderr.strip())
+        return False
+    log_message("INFO", "Python script executed successfully", script_path=script_path)
+    return True
+
+def manage_jobs(token=None):
+    """
+    Fetch and manage jobs (gsql_batch, gsql_stream, and Python) from ZooKeeper.
+    """
+    batch_jobs = get_zookeeper_data("/tgflow/jobs").split("\n")  # Must check parsing logic
+    if not batch_jobs:
+        log_message("WARN", "No jobs found in /tgflow/jobs znode")
+        return
+
+    for job_name in batch_jobs:
+        job_metadata = get_zookeeper_data(f"/tgflow/jobs/{job_name}")
+        if not job_metadata:
+            log_message("WARN", f"Missing job metadata for {job_name}")
+            continue
+
+        job_data = json.loads(job_metadata)
+        if not validate_job_data(job_data):
+            continue  # Skip invalid job
+
+        job_type = job_data["type"]
+
+        if job_type == "gsql_stream":
+            log_message("INFO", f"Starting gsql_stream job", job=job_name, graph=job_data["graph"])
+            run_gsql_job(job_data["graph"], job_data["job_name"], token, is_stream=True)
+
+        elif job_type == "gsql_batch":
+            frequency = parse_frequency(job_data.get("frequency", DEFAULT_BATCH_FREQUENCY))
+            log_message("INFO", f"Starting gsql_batch job", job=job_name, graph=job_data["graph"], frequency=frequency)
+            run_gsql_job(job_data["graph"], job_data["job_name"], token, is_stream=False)
+
+        elif job_type == "command":
+            command = job_data["command"]
+            args = job_data.get("args", [])
+            frequency = parse_frequency(job_data.get("frequency", DEFAULT_BATCH_FREQUENCY))
+            log_message("INFO", f"Starting command job", job=job_name, command=command, frequency=frequency)
+            monitor_local_command(command, args, frequency)
+
+def main():
+    while True:
+        payload = json.dumps({"hostname": HOSTNAME, "timestamp": datetime.utcnow().isoformat()})
+        if create_ephemeral_znode(LEADER_ZNODE, payload):
+            # Now becoming leader by creating /tgglow/leader ephemeral znode
+            log_message("INFO", "Become leader", hostname=HOSTNAME)
+            try:
+                manage_jobs() # Manage jobs or perform leader duties
+            except KeyboardInterrupt:
+                log_message("WARN", "Leader shutting down")
+                break
+        else:
+            log_message("INFO", "Become follower", hostname=HOSTNAME)
+            create_follower_znode()  # Register as a follower under /fow/followers
+            watch_znode()  # Wait for leadership opportunity by watching /tgglow/leader
+
+if __name__ == "__main__":
+    main()

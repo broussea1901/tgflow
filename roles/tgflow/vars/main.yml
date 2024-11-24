@@ -1,0 +1,6 @@
+tgflow_install_path: /applis/tigergraph/tgflow
+tgflow_service_name: tgflow
+zookeeper_cli_path: /applis/tigergraph/apps/zookeeper/cmd/zkCli.sh
+zookeeper_server: localhost:2181
+tgflow_user: tigergraph
+default_batch_frequency: 14400
