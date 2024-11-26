@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+JAVA_HOME = "/my/path"
+ZOOKEEPER_CLI = "/applis/tigergraph/apps/zookeeper/cmd/zkCli.sh"
+ZOOKEEPER_SERVER = "localhost:2181"
+
+SERVER_IP = "127.0.0.1"  # TigerGraph server IP or preferably LB VIP
+PORT = "9000"  # TigerGraph server port
+
+LAAS_AP = "ap12345"  # Application identifier for logging
+LAAS_LOGGER = "tgflow"  # Logger name
+LAAS_RETENTION = "month"  # Log retention period
+HOSTNAME = socket.gethostname()  # Get the hostname of the current machine
+
+DEFAULT_BATCH_FREQUENCY = 14400  # Default frequency for batch job restarts (4 hours in seconds)
+
+DEFAULT_BATCH_FREQUENCY = 14400  # Default frequency for batch job restarts (4 hours in seconds)
+LEADER_ZNODE = "/tgflow/leader"  # Leader znode path
+FOLLOWER_BASE_ZNODE = "/tgflow/followers"  # Base path for follower znodes
+SECRET_ZNODE = "/tgflow/secret"  # Secret znode path for authentication token retrieval
+
+SLEEP_INTERVAL = 10  # Interval for monitoring jobs (in seconds)
+CHECK_INTERVAL = 5  # Interval for checking leadership status (in seconds)
+
