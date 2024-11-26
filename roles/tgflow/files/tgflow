@@ -5,11 +5,21 @@ import subprocess
 import json
 from datetime import datetime
 
+# Import the external configuration
+import tgflow_config as config
+
 # Configuration
-ZOOKEEPER_CLI = "/path/to/zkCli.sh"  # Path to ZooKeeper CLI for managing znodes
-ZOOKEEPER_SERVER = "localhost:2181"  # ZooKeeper server address and port
-LEADER_ZNODE = "/tgflow/leader"  # Znode for leader information
-FOLLOWERS_ZNODE = "/tgflow/followers"  # Base znode for followers
+JAVA_HOME = config.JAVA_HOME
+ZOOKEEPER_CLI = config.ZOOKEEPER_CLI
+ZOOKEEPER_SERVER = config.ZOOKEEPER_SERVER
+
+LEADER_ZNODE = config.LEADER_ZNODE
+FOLLOWER_BASE_ZNODE = config.FOLLOWER_BASE_ZNODE
+
+LAAS_AP = config.LAAS_AP
+LAAS_LOGGER = config.LAAS_LOGGER
+LAAS_RETENTION = config.LAAS_RETENTION
+HOSTNAME = socket.gethostname()  # Get the hostname of the current machine
 
 def log_message(level, message, **kwargs):
     """
