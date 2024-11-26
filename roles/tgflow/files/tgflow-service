@@ -10,22 +10,26 @@ from datetime import datetime
 import tgflow_config as config
 
 # Configuration
+JAVA_HOME = config.JAVA_HOME
 ZOOKEEPER_CLI = config.ZOOKEEPER_CLI
 ZOOKEEPER_SERVER = config.ZOOKEEPER_SERVER
-JAVA_HOME = config.JAVA_HOME
 
-DEFAULT_BATCH_FREQUENCY = config.
-LEADER_ZNODE = config.
-FOLLOWER_BASE_ZNODE = config.
-SECRET_ZNODE = config.
-HOSTNAME = socket.gethostname()  # Get the hostname of the current machine
 SERVER_IP = config.SERVER_IP
 PORT = config.PORT
-SLEEP_INTERVAL = config.SLEEP_INTERVAL
-CHECK_INTERVAL = config.CHECK_INTERVAL
+
+DEFAULT_BATCH_FREQUENCY = config.DEFAULT_BATCH_FREQUENCY
+
+LEADER_ZNODE = config.LEADER_ZNODE
+FOLLOWER_BASE_ZNODE = config.FOLLOWER_BASE_ZNODE
+SECRET_ZNODE = config.SECRET_ZNODE
+
 LAAS_AP = config.LAAS_AP
 LAAS_LOGGER = config.LAAS_LOGGER
 LAAS_RETENTION = config.LAAS_RETENTION
+HOSTNAME = socket.gethostname()  # Get the hostname of the current machine
+
+SLEEP_INTERVAL = config.SLEEP_INTERVAL
+CHECK_INTERVAL = config.CHECK_INTERVAL
 
 # Expected ZooKeeper Node Content
 """
