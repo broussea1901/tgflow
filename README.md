@@ -35,6 +35,15 @@ TgFlow is a lightweight tool designed to manage and orchestrate TigerGraph loadi
   tgflow add-job mygsql_batch_job '{"type": "gsql_batch", "graph": "MyGraph", "job_name": "MyBatchJob", "frequency": "1h"}'
   ```
 
+  - **Delete a Job**:
+  ```bash
+  tgflow delete-job <job_name>
+  ```
+  Example:
+  ```bash
+  tgflow delete-job mygsql_batch_job
+  ```
+
 - **Show Cluster Status**:
   ```bash
   tgflow cluster-status
